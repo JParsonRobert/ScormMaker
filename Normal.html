@@ -1,0 +1,913 @@
+<! This program is copyright 2015 James Roberts>
+<! This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. >
+<! This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License at http://www.gnu.org/licenses/ for more details.>
+
+<!DOCTYPE HTML>
+<head><meta charset="UTF-8">
+<TITLE>Normal Distribution</TITLE>
+</head>
+<body>
+
+<!--Load HTML5 Canvases-->
+<canvas id="cvsGraph"      style="position: absolute; top:0px; left:0px">Your browser does not support HTML5 Canvas. Update!</canvas>
+<canvas id="cvsGrid"       style="position: absolute; top:0px; left:0px"></canvas>
+<canvas id="cvsBackground" style="position: absolute; top:0px; left:0px"></canvas>
+<canvas id="cvsParameters" style="position: absolute; top:0px; left:0px"></canvas>
+<canvas id="cvsDraw"       style="position: absolute; top:0px; left:0px"></canvas>
+
+<!--Load Input Forms-->
+<form id="frmParameters">
+  <input id="frmPopulationMean"  style="position: absolute; top:209px; left:375px; width:58px; text-align:right; visibility:hidden; z-index:4" type="number" value="25" step="0.1" oninput="doChangeMean()">
+  <input id="frmPopulationSD"    style="position: absolute; top:120px; left:415px; width:53px; text-align:right; visibility:hidden; z-index:4" type="number" min="0" value="5" step="0.1" oninput="doChangeSD()">
+  <input id="frmCriticalX"       style="position: absolute; top:245px; width:48px; text-align:right; visibility:hidden" type="number" step="0.01" oninput="doChangeCriticalX()">
+  <input id="frmRightDecimal"    style="position: absolute; top:7px; width:53px; text-align:right; visibility:hidden" type="number" step="0.001" oninput="doChangeRightDecimal()">
+  <input id="frmRightPercentage" style="position: absolute; top:7px; width:50px; text-align:right; visibility:hidden" type="number" step="0.1" oninput="doChangeRightPercentage()">
+  <input id="frmLeftDecimal"     style="position: absolute; top:7px; width:53px; text-align:right; visibility:hidden" type="number" step="0.001" oninput="doChangeLeftDecimal()">
+  <input id="frmLeftPercentage"  style="position: absolute; top:7px; width:50px; text-align:right; visibility:hidden" type="number" step="0.1" oninput="doChangeLeftPercentage()">
+</form>
+
+<!--Load Reset Button-->
+<div id="btn01" style="position: absolute; top:270px; left:350px; visibility:visible; display:inline">
+  <input id="btnReset" type="button" value="Reset">
+</div>
+
+<script type="text/javascript" language="JavaScript">
+
+// Set Colours
+clrVerticalLine   = "rgba( 82, 82, 39,0.7)";
+clrCriticalX      = "rgba( 82, 82, 39,1.0)";  
+clrGraphNegative  = "rgba(255,  0,  0,0.3)";
+clrGraphPositive  = "rgba(  0, 50,200,0.4)";
+clrDigitsNegative = "rgba(255,  0,  0,1.0)";
+clrDigitsPositive = "rgba(  0, 50,255,1.0)";
+
+// Set Basic Parameters of Canvases
+cvsGrid.width = 760;
+cvsGrid.height = 280;
+cvsGraph.width = 760;
+cvsGraph.height = 280;
+cvsBackground.width = 760;
+cvsBackground.height = 280;
+cvsParameters.width = 760;
+cvsParameters.height = 280;
+cvsDraw.width = 760;
+cvsDraw.height = 280;
+
+// Set Context Names of Canvases
+ctxGrid = cvsGrid.getContext("2d"),
+ctxGraph = cvsGraph.getContext("2d");
+ctxBackground = cvsDraw.getContext("2d");
+ctxParameters = cvsDraw.getContext("2d");
+ctxDraw = cvsDraw.getContext("2d");
+
+// Set Basic Parameters of Contexts
+ctxGrid.textBaseline = "top";
+ctxGraph.textBaseline = "top";
+ctxBackground.textBaseline = "top";
+ctxParameters.textBaseline = "top";
+ctxDraw.textBaseline = "top";
+
+function doSetSpecificVariables() {
+  meanX = 25;
+  sdX = 5;
+  z0 = 0;
+  x0 = 25.00;
+  document.getElementById("frmPopulationMean").value = 25;
+  document.getElementById("frmPopulationSD").value = 5;
+  pxlPointerX = 380,
+  pxlPointerY = 0,
+  pxlLineX = 380;
+  CUM = 0.500;
+  CUMP = 50.0;
+  len1 = 45;
+  booStandardNormal = false;
+  booMovingLine = false;
+  booChangingMean = false;
+  booChangingSD = false;
+  booPrecisingCriticalX = false;
+  booPrecisingRightDecimal = false;
+  booPrecisingRightPercentage = false;
+  booPrecisingLeftDecimal = false;
+  booPrecisingLeftPercentage = false;
+}
+
+doSetSpecificVariables();
+doWriteGrid();
+
+// MOUSE Events
+
+cvsDraw.onmousedown = function(evt) {
+  evt.preventDefault();
+  pxlPointerX = evt.pageX;
+  pxlPointerY = evt.pageY;
+  pxlBuffer = 0;
+  doMouseDownTouchStart();
+}
+
+cvsDraw.onmousemove = function(evt) {
+  if (booMovingLine) {
+    evt.preventDefault();
+    pxlPointerX = evt.pageX;
+    pxlPointerY = evt.pageY;
+    doWriteLine();
+  }
+}
+
+cvsDraw.onmouseup = function(evt){
+  if (booMovingLine) {
+    pxlPointerX = evt.pageX;
+    pxlPointerY = evt.pageY;
+    doWriteLine();
+  }
+  booMovingLine = false;
+  cvsDraw.style.cursor="default";
+}
+
+cvsDraw.onmouseout = function(evt) {
+  booMovingLine = false;
+  cvsDraw.style.cursor="default";
+}
+
+// TOUCH Events
+
+cvsDraw.addEventListener("touchstart", function(evt) {
+  evt.preventDefault();
+  pxlPointerX = evt.changedTouches[0].pageX;
+  pxlPointerY = evt.changedTouches[0].pageY;
+  pxlBuffer = 10;
+  doMouseDownTouchStart();
+}, false)
+
+cvsDraw.addEventListener("touchmove", function(evt) {
+  evt.preventDefault();
+  pxlPointerX = evt.changedTouches[0].pageX;
+  if (booMovingLine) {
+    doWriteLine();
+  }
+}, false)
+
+cvsDraw.addEventListener("touchend", function(evt) {
+  booMovingLine = false;    
+  pxlPointerX = evt.changedTouches[0].pageX;
+  if (booMovingLine) {
+    doWriteLine();
+  }
+  booMovingLine = false;
+}, false)
+
+cvsDraw.addEventListener("touchcancel", function(evt){
+  booMovingLine = false;
+}, false)
+
+// MOUSE/TOUCH Controls
+
+function doMouseDownTouchStart() {
+  document.getElementById("frmRightDecimal").style.visibility="hidden";
+  document.getElementById("frmRightPercentage").style.visibility="hidden";
+  document.getElementById("frmLeftDecimal").style.visibility="hidden";
+  document.getElementById("frmLeftPercentage").style.visibility="hidden";
+  document.getElementById("frmCriticalX").style.visibility="hidden";
+  document.getElementById("frmPopulationMean").style.visibility="hidden";
+  document.getElementById("frmPopulationSD").style.visibility="hidden";
+
+// Adjusting Population Mean
+  if (350 < pxlPointerX && pxlPointerX < 420 && 210 < pxlPointerY && pxlPointerY < 230) {
+    document.getElementById("frmPopulationMean").style.visibility="visible";
+    document.getElementById("frmPopulationMean").focus();
+    booChangingMean = true;
+  }
+  else {
+    document.getElementById("frmPopulationMean").style.visibility="hidden";
+    booChangingMean = false;
+  }
+
+// Adjusting Population SD
+  if (380 < pxlPointerX && pxlPointerX < 450 && 118 < pxlPointerY && pxlPointerY < 138) {
+    document.getElementById("frmPopulationSD").style.visibility="visible";
+    document.getElementById("frmPopulationSD").focus();
+    booChangingSD = true;
+  }
+  else {
+    document.getElementById("frmPopulationSD").style.visibility="hidden";
+    booChangingSD = false;
+  }
+
+// Adjusting Critical X below Vertical Line
+  if (pxlLineX-20 < pxlPointerX && pxlPointerX < pxlLineX+30 && 240 < pxlPointerY && pxlPointerY < 260) {
+    x0_1 = x0.toFixed(1);
+    document.getElementById("frmCriticalX").value = x0_1;
+    strLineX = (pxlLineX-17).toString()+"px";
+    document.getElementById("frmCriticalX").style.left = strLineX;
+    document.getElementById("frmCriticalX").style.visibility = "visible";
+    document.getElementById("frmCriticalX").focus();
+  }
+  else {
+    document.getElementById("frmCriticalX").style.visibility="hidden";
+  }
+
+// Adjusting Alpha (Decimal, Right)
+  if (570 < pxlPointerX && pxlPointerX < 620 && pxlPointerY < 30) {
+    CUM_3 = CUM.toFixed(3);
+    len3 = len1+520;
+    document.getElementById("frmRightDecimal").style.left = len3.toString()+"px";
+    document.getElementById("frmRightDecimal").value=CUM_3;
+    document.getElementById("frmRightDecimal").style.visibility="visible";
+    document.getElementById("frmRightDecimal").focus();
+  }
+  else {
+    document.getElementById("frmRightDecimal").style.visibility="hidden";
+  }
+
+// Adjusting Alpha (Percentage, Right)
+  if (630 < pxlPointerX && pxlPointerX < 680 && pxlPointerY < 30) {
+    CUM_P1 = CUMP.toFixed(1);
+    len3 = len1+580;
+    document.getElementById("frmRightPercentage").value=CUM_P1;
+    document.getElementById("frmRightPercentage").style.left = len3.toString()+"px";
+    document.getElementById("frmRightPercentage").style.visibility="visible";
+    document.getElementById("frmRightPercentage").focus();
+  }
+  else {
+    document.getElementById("frmRightPercentage").style.visibility="hidden";
+  }
+
+// Adjusting 1-Alpha (Decimal, Left)
+  if (190 < pxlPointerX && pxlPointerX < 240 && pxlPointerY < 30) {
+    CUM_3_L = (1-CUM).toFixed(3);
+    len3 = len1+140;
+    document.getElementById("frmLeftDecimal").style.left = len3.toString()+"px";
+    document.getElementById("frmLeftDecimal").value=CUM_3_L;
+    document.getElementById("frmLeftDecimal").style.visibility="visible";
+    document.getElementById("frmLeftDecimal").focus();
+  }
+  else {
+    document.getElementById("frmLeftDecimal").style.visibility="hidden";
+  }
+
+// Adjusting 1-Alpha (Percentage, Left)
+  if (250 < pxlPointerX && pxlPointerX < 300 && pxlPointerY < 30) {
+    CUM_P1_L = (100-CUMP).toFixed(1);
+    len3 = len1+200;
+    document.getElementById("frmLeftPercentage").value=CUM_P1_L;
+    document.getElementById("frmLeftPercentage").style.left = len3.toString()+"px";
+    document.getElementById("frmLeftPercentage").style.visibility="visible";
+    document.getElementById("frmLeftPercentage").focus();
+  }
+  else {
+    document.getElementById("frmLeftPercentage").style.visibility="hidden";
+  }
+
+  // Moving Vertical Line
+  if (!booChangingMean && !booChangingSD) {
+    if (pxlLineX-10-pxlBuffer < pxlPointerX && pxlPointerX < pxlLineX+10+pxlBuffer && 40-pxlBuffer < pxlPointerY) {
+      booMovingLine = true;
+      if (pxlBuffer == 0) {
+        cvsDraw.style.cursor="pointer";
+      } 
+      doWriteLine();
+    }
+    else {
+      booMovingLine = false;
+      cvsDraw.style.cursor="default";
+    }
+  }
+}
+
+// BUTTON Events
+
+btnReset.addEventListener("click", function() {
+  document.getElementById("frmCriticalX").style.visibility="hidden";
+  document.getElementById("frmRightDecimal").style.visibility="hidden";
+  document.getElementById("frmRightPercentage").style.visibility="hidden";
+  document.getElementById("frmLeftDecimal").style.visibility="hidden";
+  document.getElementById("frmLeftPercentage").style.visibility="hidden";
+  document.getElementById("frmPopulationMean").style.visibility="hidden";
+  document.getElementById("frmPopulationSD").style.visibility="hidden";
+  doSetSpecificVariables()
+  doWriteGrid();
+
+}, false);
+
+// FORM Events ******************************************************************************************************
+
+document.getElementById("frmPopulationMean").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {
+    evt.preventDefault();
+    meanX = parseFloat(document.getElementById("frmPopulationMean").value);
+    if (isNaN(meanX)) {
+      meanX = 25;
+      document.getElementById("frmPopulationMean").value = 25;
+    }
+    booChangingMean = true;
+    document.getElementById("frmPopulationMean").style.visibility="hidden";
+  }
+}, false)
+
+document.getElementById("frmPopulationSD").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {
+    evt.preventDefault();
+    sdX = parseFloat(document.getElementById("frmPopulationSD").value);
+    if (sdX == 0) {
+      sdX = 0.001;
+      document.getElementById("frmPopulationSD").value = 0.001;
+    }
+    booChangingSD = true;
+    document.getElementById("frmPopulationSD").style.visibility="hidden";
+  }
+}, false)
+
+document.getElementById("frmCriticalX").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {
+    evt.preventDefault();
+    booPrecisingCriticalX = true;
+    document.getElementById("frmCriticalX").style.visibility="hidden";
+    doWriteLine();
+  }
+}, false)
+
+document.getElementById("frmRightDecimal").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {
+    evt.preventDefault();
+    booPrecisingRightDecimal = true;
+    document.getElementById("frmRightDecimal").style.visibility="hidden";
+    doWriteLine();
+  }
+}, false)
+
+document.getElementById("frmRightPercentage").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {   
+    evt.preventDefault();
+    booPrecisingRightPercentage = true;
+    document.getElementById("frmRightPercentage").style.visibility="hidden";
+    doWriteLine();
+  }
+}, false)
+
+document.getElementById("frmLeftDecimal").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {
+    evt.preventDefault();
+    booPrecisingLeftDecimal = true;
+    document.getElementById("frmLeftDecimal").style.visibility="hidden";
+    doWriteLine();
+  }
+}, false)
+
+document.getElementById("frmLeftPercentage").addEventListener("keypress", function(evt) {
+  if (evt.keyCode == 13) {   
+    evt.preventDefault();
+    booPrecisingLeftPercentage = true;
+    document.getElementById("frmLeftPercentage").style.visibility="hidden";
+    doWriteLine();
+  }
+}, false)
+
+// SUBROUTINES ******************************************************************************************************************************
+
+function doChangeMean() {
+  booChangingMean = true;
+  doWriteGrid();
+}
+
+function doChangeSD() {
+  booChangingSD = true;
+  doWriteGrid();
+}
+
+function doChangeCriticalX() {
+  booPricisingCriticalX = true;
+  doWriteLine();
+}
+
+function doChangeRightDecimal() {
+  booPrecisingRightDecimal = true;
+  doWriteLine();
+}
+
+function doChangeRightPercentage() {
+  booPrecisingRightPercentage = true;
+  doWriteLine();
+}
+
+function doChangeLeftDecimal() {
+  booPrecisingLeftDecimal = true;
+  doWriteLine();
+}
+
+function doChangeLeftPercentage() {
+  booPrecisingLeftPercentage = true;
+  doWriteLine();
+}
+
+function doWriteGrid() {
+  ctxGrid.clearRect(0, 0, cvsGrid.width, cvsGrid.height);
+
+// Write Normal Curve
+  ctxGrid.fillStyle = "#000000";
+  ctxGrid.strokeStyle = "#000000";
+  ctxGrid.beginPath();
+  for (x = 59; x < 701; x++){  
+    y = (1/Math.sqrt(Math.PI))*Math.exp(-Math.pow((x-380)/100,2))/2;
+    ctxGrid.fillRect(x, 195-y*500, 1 , 1 );
+    ctxGrid.stroke();
+  }
+
+// Write Thin Vertical Mean Line
+  ctxGrid.beginPath();
+  ctxGrid.strokeStyle = "#9D9D9D";
+  ctxGrid.lineWidth = 1;
+  ctxGrid.moveTo(380.5,55);  
+  ctxGrid.lineTo(380.5,200);  
+  ctxGrid.stroke();
+  
+// Write Thin Horizontal SD Arrow
+  ctxGrid.beginPath();
+  ctxGrid.strokeStyle = "#9D9D9D";
+  ctxGrid.lineWidth = 1;
+  ctxGrid.moveTo(380,150);  
+  ctxGrid.lineTo(460,150);  
+  ctxGrid.lineTo(450,140);  
+  ctxGrid.moveTo(450,160);  
+  ctxGrid.lineTo(460,150);  
+  ctxGrid.stroke();
+  
+//  Write Horizontal Axis
+  ctxGrid.beginPath();
+  ctxGrid.strokeStyle = "#000000";
+  ctxGrid.lineWidth = 2;
+  ctxGrid.moveTo(59,201);  
+  ctxGrid.lineTo(701,201);  
+  ctxGrid.stroke();
+
+// Write Numbers Below Horizontal Axis
+  ctxGrid.fillStyle = "#000000";
+  meanX = parseFloat(document.getElementById("frmPopulationMean").value);
+  sdX = parseFloat(document.getElementById("frmPopulationSD").value);
+  if (meanX == 0 && sdX == 1) {
+    booStandardNormal = true;
+  }
+  else {
+    booStandardNormal = false;
+  }
+
+  if (sdX < 0) {
+    sdX = 0.001;
+    document.getElementById("frmPopulationSD").value = 0.001;
+  }
+  for (i = -3; i <=+3; i+=0.5){  
+    k = i*sdX  + meanX;
+    if (k > -1 && k < 1) {
+      k = k.toFixed(3);
+    }
+    else { 
+      if (k > -10 && k < 10) {
+        k = k.toFixed(2);
+      }
+      else {
+        if (k > -100 && k < 100) {
+          k = k.toFixed(1);
+        }
+        else {
+          k = k.toFixed(0);
+        }
+      }
+    }
+    a = k.toString();
+    if (i < -0.5 || i > 0.5) {
+      ctxGrid.font="12px helvetica, arial, sans-serif";
+      ctxGrid.fillText(a,(i+5)*100-123, 203);
+    }
+  }
+  doWriteLine();
+}
+
+function doWriteLine() {
+  ctxGraph.clearRect(0, 0, cvsGraph.width, cvsGraph.height);
+
+// Skip over input boxes if moving line
+  if (booMovingLine && ((115 < pxlPointerY && pxlPointerY < 143 && 409 < pxlPointerX && pxlPointerX < 474) || (198 < pxlPointerY && pxlPointerY < 226 && 369 < pxlPointerX && pxlPointerX < 439))) {
+    document.getElementById("cvsDraw").style.zIndex="1";
+  }
+  else {
+    document.getElementById("cvsDraw").style.zIndex="auto";
+  }
+
+// Calculations of z, x & Normal pdf
+  if (booPrecisingCriticalX) {
+    x0 = parseFloat(document.getElementById("frmCriticalX").value);
+    if (x0 < meanX-3.2*sdX) {
+      x0 = meanX-3.2*sdX;
+    }
+    if (x0 > meanX+3.2*sdX) {
+      x0 = meanX+3.2*sdX;
+    }
+    z0 = (x0-meanX)/sdX;
+    pxlLineX = Math.floor(((x0-meanX)/sdX)*100+380);
+    pxlPointerX = pxlLineX;
+  }
+  if (booPrecisingCriticalX || booMovingLine || booChangingMean || booChangingSD) {
+    if (pxlPointerX < 60) {
+      pxlPointerX = 60;
+    }
+    if (pxlPointerX > 700) {
+      pxlPointerX = 700;
+    }
+    pxlLineX = Math.floor(pxlPointerX);
+    if (booMovingLine || booChangingMean || booChangingSD) {
+      z0 = (pxlLineX-380)/100;
+      x0 = (((pxlLineX-380)/100)*sdX)+meanX;
+    }
+    if (z0>0) {
+      CUM =       0.0705230784*Math.pow(z0/Math.sqrt(2),1);
+      CUM = CUM + 0.0422820123*Math.pow(z0/Math.sqrt(2),2);
+      CUM = CUM + 0.0092705272*Math.pow(z0/Math.sqrt(2),3);
+      CUM = CUM + 0.0001520143*Math.pow(z0/Math.sqrt(2),4);
+      CUM = CUM + 0.0002765672*Math.pow(z0/Math.sqrt(2),5);
+      CUM = CUM + 0.0000430638*Math.pow(z0/Math.sqrt(2),6);
+      CUM = (0.5/(Math.pow(CUM+1,16)));
+    }
+    else {
+      z1 = 0-z0;
+      CUM =       0.0705230784*Math.pow(z1/Math.sqrt(2),1);
+      CUM = CUM + 0.0422820123*Math.pow(z1/Math.sqrt(2),2);
+      CUM = CUM + 0.0092705272*Math.pow(z1/Math.sqrt(2),3);
+      CUM = CUM + 0.0001520143*Math.pow(z1/Math.sqrt(2),4);
+      CUM = CUM + 0.0002765672*Math.pow(z1/Math.sqrt(2),5);
+      CUM = CUM + 0.0000430638*Math.pow(z1/Math.sqrt(2),6);
+      CUM = 1-(0.5/(Math.pow(CUM+1,16)));
+    }
+  }
+  if (booPrecisingRightDecimal) {
+    CUM = parseFloat(document.getElementById("frmRightDecimal").value);
+  }
+  if (booPrecisingRightPercentage) {
+    CUMP = parseFloat(document.getElementById("frmRightPercentage").value);
+    CUM = CUMP/100;
+  }
+  if (booPrecisingLeftDecimal) {
+    CUM = 1 - parseFloat(document.getElementById("frmLeftDecimal").value);
+  }
+  if (booPrecisingLeftPercentage) {
+    CUMP = 100 - parseFloat(document.getElementById("frmLeftPercentage").value);
+    CUM = CUMP/100;
+  }
+  if (booPrecisingRightDecimal || booPrecisingRightPercentage || booPrecisingLeftDecimal || booPrecisingLeftPercentage) {
+    if (isNaN(CUM)) {
+      CUM = 0.5;
+      CUM = CUMP/100;
+    }
+    if (0.0007 <= CUM && CUM <= 0.9993) {
+      doFindQuantile();
+      x0 = meanX + z0*sdX;
+      pxlLineX = Math.floor(z0*100+380);
+      pxlPointerX = pxlLineX;
+    }
+    if (CUM < 0.0007) {
+      CUM = 0.0007;
+      z0 = 3.2;
+      x0 = meanX + 3.2*sdX;
+      pxlLineX = 700;
+      pxlPointerX = pxlLineX;
+    }
+    if (0.9993 < CUM) {
+      CUM = 0.9993;
+      z0 = -3.2;
+      x0 = meanX - 3.2*sdX;
+      pxlLineX = 60;
+      pxlPointerX = pxlLineX;
+    }
+  }
+  z0_2 = z0.toFixed(2);
+  str_z0 = z0_2.toString();
+  if (-0.1 <= sdX && sdX <= 0.1) {
+    x0_4 = x0.toFixed(4);
+    str_x0 = x0_4.toString();
+  }
+  else {
+    if (-1 <= sdX && sdX <= 1) {
+      x0_3 = x0.toFixed(3);
+      str_x0 = x0_3.toString();
+    }
+    else {
+      if (-10 <= sdX && sdX <= 10) {
+        x0_2 = x0.toFixed(2);
+        str_x0 = x0_2.toString();
+      } 
+      else {
+        if (-100 <= sdX && sdX <= 100) {
+          x0_1 = x0.toFixed(1);
+          str_x0 = x0_1.toString();
+        } 
+        else {
+          x0_0 = x0.toFixed(0);
+          str_x0 = x0_0.toString();
+        }
+      }
+    }
+  }
+  CUM_3 = CUM.toFixed(3);
+  CUM_4 = CUM.toFixed(4);
+  CUM_3_L = (1 - CUM).toFixed(3);
+  CUM_4_L = (1 - CUM).toFixed(4);
+  CUMP = CUM*100
+  CUM_3P = CUMP.toFixed(1);
+  CUM_4P = CUMP.toFixed(2);
+  CUM_3P_L = (100 - CUMP).toFixed(1);
+  CUM_4P_L = (100 - CUMP).toFixed(2);
+  if (-1.95 < z0 && z0 < 1.95) {
+    str_CUM = CUM_3.toString();
+    str_CUMP = CUM_3P.toString();
+    str_CUM_L = CUM_3_L.toString();
+    str_CUMP_L = CUM_3P_L.toString();
+  }
+  else {
+    str_CUM = CUM_4.toString();
+    str_CUMP = CUM_4P.toString();
+    str_CUM_L = CUM_4_L.toString();
+    str_CUMP_L = CUM_4P_L.toString();
+  }
+
+// Write Positive Probability Box **************************************************************
+  ctxGraph.beginPath();
+  ctxGraph.strokeStyle = "#000000";
+  ctxGraph.fillStyle = "#000000";
+  ctxGraph.font="18px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("Pr(",410, 7);
+  ctxGraph.font="italic 18px  helvetica, arial, sans-serif";
+  if (booStandardNormal) {
+    ctxGraph.fillText("Z",434,7);
+  }
+  else {
+    ctxGraph.fillText("X",434,7);
+  }
+  ctxGraph.fillText(">",452, 7);
+  ctxGraph.fillStyle = clrCriticalX;
+  if (booStandardNormal) {
+    ctxGraph.fillText("Z",466,7);
+  }
+  else {
+    ctxGraph.fillText("X",466,7);
+  }
+  ctxGraph.font="italic 12px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("0",476, 18);
+  ctxGraph.font="18px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("=",484, 7);
+  ctxGraph.fillText(str_x0,496, 7);
+
+  len1 = ctxGraph.measureText(str_x0).width;
+  len2 = ctxGraph.measureText(str_CUM+str_CUMP).width+len1;
+  ctxGraph.fillStyle = "#000000";
+  ctxGraph.fillText(") =",497+len1, 7);
+  ctxGraph.fillStyle = clrDigitsPositive;
+  ctxGraph.fillText(str_CUM +" or "+ str_CUMP +"%",525+len1, 7);
+  ctxGraph.stroke();
+
+  ctxGraph.beginPath();
+  ctxGraph.strokeStyle = "#000000";
+  ctxGraph.lineWidth = 1;
+  ctxGraph.rect(400.5,3.5, 180+len2,30);
+  ctxGraph.stroke();
+
+// Write Negative Probability Box *********************************************************************
+  ctxGraph.beginPath();
+  ctxGraph.strokeStyle = "#000000";
+  ctxGraph.fillStyle = "#000000";
+  ctxGraph.font="18px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("Pr(", 30, 7);
+  ctxGraph.font="italic 18px  helvetica, arial, sans-serif";
+  if (booStandardNormal) {
+    ctxGraph.fillText("Z", 54,7);
+  }
+  else {
+    ctxGraph.fillText("X", 54,7);
+  }
+  ctxGraph.fillText("<", 72, 7);
+  ctxGraph.fillStyle = clrCriticalX;
+  if (booStandardNormal) {
+    ctxGraph.fillText("Z", 86,7);
+  }
+  else {
+    ctxGraph.fillText("X", 86,7);
+  }
+  ctxGraph.font="italic 12px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("0", 96, 18);
+  ctxGraph.font="18px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("=", 104, 7);
+  ctxGraph.fillText(str_x0, 116, 7);
+
+  len1 = ctxGraph.measureText(str_x0).width;
+  len2 = ctxGraph.measureText(str_CUM+str_CUMP).width+len1;
+  ctxGraph.fillStyle = "#000000";
+  ctxGraph.fillText(") =", 117+len1, 7);
+  ctxGraph.fillStyle = clrDigitsNegative;
+  ctxGraph.fillText(str_CUM_L +" or "+ str_CUMP_L +"%", 145+len1, 7);
+  ctxGraph.stroke();
+
+  ctxGraph.beginPath();
+  ctxGraph.strokeStyle = "#000000";
+  ctxGraph.lineWidth = 1;
+  ctxGraph.rect(20.5,3.5, 180+len2,30);
+  ctxGraph.stroke();
+
+// Write Graph: Negative Shaded Area *******************************************************************
+  ctxGraph.strokeStyle = clrGraphNegative;
+  for (shade = 59; shade < pxlLineX+3; shade++) {  
+    y = (1/Math.sqrt(Math.PI))*Math.exp(-Math.pow((shade-380)/100,2))/2;
+    y1 = 195-y*500;
+    i1 = 0;
+    if (i1 = 1) {
+      ctxGraph.beginPath();
+      ctxGraph.moveTo(shade,y1);  
+      ctxGraph.lineTo(shade,200);  
+      ctxGraph.lineWidth = 1;
+      ctxGraph.stroke();
+      i1 = 0;
+    }
+    else {
+      i1 = 1;
+    }
+  }
+
+// Write Graph: Positive Shaded Area *******************************************************************
+  ctxGraph.strokeStyle = clrGraphPositive;
+  for (shade=pxlLineX+3; shade<701; shade++) {  
+    y = (1/Math.sqrt(Math.PI))*Math.exp(-Math.pow((shade-380)/100,2))/2;
+    y1 = 195-y*500;
+    i1 = 0;
+    if (i1 = 1) {
+      ctxGraph.beginPath();
+      ctxGraph.moveTo(shade,y1);  
+      ctxGraph.lineTo(shade,200);  
+      ctxGraph.lineWidth = 1;
+      ctxGraph.stroke();
+      i1 = 0;
+    }
+    else {
+      i1 = 1;
+    }
+  }
+
+// Write Line to Positive Probability Box
+  ctxGraph.strokeStyle = "#000000";
+  ctxGraph.lineCap = "butt";
+  ctxGraph.lineWidth = 1;
+  ctxGraph.beginPath();
+  switch (true) {
+    case (pxlLineX<240):
+      ctxGraph.moveTo(300,155);
+      break;
+    case (pxlLineX<450):
+      ctxGraph.moveTo(pxlLineX*1.125+30,0.19*pxlLineX+109.4);
+      break;
+    case (pxlLineX<600):
+      ctxGraph.moveTo(pxlLineX-87+(48000/(pxlLineX-174)),0.02*pxlLineX+186);
+      break;
+    default:
+      ctxGraph.moveTo(pxlLineX-110+(55000/(pxlLineX-190)),198);
+      break;
+  }
+  ctxGraph.quadraticCurveTo(480,205,560,33);
+  ctxGraph.stroke();
+
+// Write Line to Negative Probability Box
+  ctxGraph.beginPath();
+  switch (true) {
+    case (pxlLineX>520):
+      ctxGraph.moveTo(460,155);
+      break;
+    case (pxlLineX>310):
+      ctxGraph.moveTo(pxlLineX*1.125-125,0.19*(760-pxlLineX)+109.4);
+      break;
+    case (pxlLineX>220):
+      ctxGraph.moveTo(pxlLineX-87+(48000/(pxlLineX-50000)),0.02*(760-pxlLineX)+186);
+      break;
+    default:
+      ctxGraph.moveTo(pxlLineX+135-(55000/(760-pxlLineX-292)),198);
+      break;
+  }
+  ctxGraph.quadraticCurveTo(130,160,170,33);
+  ctxGraph.stroke();
+
+// Write Vertical Line *********************************************************************************
+  ctxGraph.strokeStyle = clrVerticalLine;
+  ctxGraph.lineCap = "round";
+  ctxGraph.lineWidth = 6;
+  ctxGraph.beginPath();
+  ctxGraph.moveTo(pxlLineX,48);  
+  ctxGraph.lineTo(pxlLineX,242);
+  ctxGraph.stroke();
+
+// Write Critical X below Vertical Line
+  ctxGraph.fillStyle = clrCriticalX;
+  ctxGraph.font="italic 18px  helvetica, arial, sans-serif";
+  if (booStandardNormal) {
+    ctxGraph.fillText("Z",pxlLineX-50,245);
+  }
+  else {
+    ctxGraph.fillText("X",pxlLineX-50,245);
+  }
+  ctxGraph.font="italic 12px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("0",pxlLineX-39, 255);
+  ctxGraph.font="18px  helvetica, arial, sans-serif";
+  ctxGraph.fillText("= " + str_x0,pxlLineX-30, 245);
+
+  booPrecisingRightDecimal = false;
+  booPrecisingRightPercentage = false;
+  booPrecisingLeftDecimal = false;
+  booPrecisingLeftPercentage = false;
+  booPrecisingCriticalX = false;
+  booChangingMean = false;
+  booChangingSD = false;
+
+  doWritePopulationParameters();
+
+}
+
+function doFindQuantile() {
+  CUM = 1 - CUM;
+  a1 = -3.969683028665376e+01,
+  a2 =  2.209460984245205e+02,
+  a3 = -2.759285104469687e+02,
+  a4 =  1.383577518672690e+02,
+  a5 = -3.066479806614716e+01,
+  a6 =  2.506628277459239e+00,
+
+  b1 = -5.447609879822406e+01,
+  b2 =  1.615858368580409e+02,
+  b3 = -1.556989798598866e+02,
+  b4 =  6.680131188771972e+01,
+  b5 = -1.328068155288572e+01,
+
+  c1 = -7.784894002430293e-03,
+  c2 = -3.223964580411365e-01,
+  c3 = -2.400758277161838e+00,
+  c4 = -2.549732539343734e+00,
+  c5 =  4.374664141464968e+00,
+  c6 =  2.938163982698783e+00;
+
+  d1 =  7.784695709041462e-03,
+  d2 =  3.224671290700398e-01,
+  d3 =  2.445134137142996e+00,
+  d4 =  3.754408661907416e+00;
+  
+  if (CUM < 0.02425) {
+    q1 = Math.sqrt(-2*Math.log(1-CUM));
+    z0 = (((((c1*q1+c2)*q1+c3)*q1+c4)*q1+c5)*q1+c6) / ((((d1*q1+d2)*q1+d3)*q1+d4)*q1+1);
+  }
+  if (-0.02425 <= CUM || CUM <= 0.97575) {
+    q1 = CUM - 0.5;
+    r1 = q1*q1;
+    z0 = (((((a1*r1+a2)*r1+a3)*r1+a4)*r1+a5)*r1+a6)*q1 / (((((b1*r1+b2)*r1+b3)*r1+b4)*r1+b5)*r1+1);
+  }
+  if (0.97575 < CUM) {
+    q1 = Math.sqrt(-2*Math.log(1-CUM));
+    z0 = -(((((c1*q1+c2)*q1+c3)*q1+c4)*q1+c5)*q1+c6) / ((((d1*q1+d2)*q1+d3)*q1+d4)*q1+1)
+  }
+  CUM = 1 - CUM;
+}
+
+function doWritePopulationParameters() {
+  ctxBackground.clearRect(0, 0, cvsBackground.width, cvsBackground.height);
+  ctxParameters.clearRect(0, 0, cvsParameters.width, cvsParameters.height);
+
+// Write Population Mean
+  ctxParameters.font="italic 24px helvetica, arial, sans-serif";
+  ctxParameters.fillStyle = "#000000";
+  ctxParameters.fillText("µ",345,205);
+  ctxParameters.font="bold italic 10px helvetica, arial, sans-serif";
+  if (!booStandardNormal) {
+    ctxParameters.fillText("X",356,222);
+  }
+  ctxParameters.font="16px helvetica, arial, sans-serif";
+  ctxParameters.fillText("=",363,210);
+  meanX_2 = meanX.toFixed(2);
+  str_meanX = meanX_2.toString();
+  ctxParameters.fillText(str_meanX,375, 211);
+  ctxParameters.stroke();
+
+// Write Population SD
+  ctxParameters.font="italic 24px helvetica, arial, sans-serif";
+  ctxParameters.fillText("σ",385,118);
+  ctxParameters.font="bold italic 10px helvetica, arial, sans-serif";
+  if (!booStandardNormal) {
+    ctxParameters.fillText("X",400,133);
+  }
+  ctxParameters.font="16px helvetica, arial, sans-serif";
+  ctxParameters.fillText("=",407,122);
+  sdX_2 = sdX.toFixed(2);
+  str_sdX = sdX_2.toString();
+  ctxParameters.fillText(str_sdX,419, 123);
+
+// Write X or Z Label Below Horizontal Axis
+  ctxParameters.font="bold italic 20px helvetica, arial, sans-serif";
+  ctxParameters.fillStyle = "#000000";
+  if (booStandardNormal) {
+    ctxParameters.fillText("Z",680,215);
+  }
+  else {
+    ctxParameters.fillText("X",680,215);
+  }
+}
+
+</script>
+</body>
+</html>
